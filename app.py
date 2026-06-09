@@ -452,7 +452,7 @@ with left:
                     titlefont=dict(size=11), tickfont=dict(size=10)),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        hoverlabel=dict(font_size=12),
+        hoverlabel=dict(font=dict(size=12)),
     )
     st.plotly_chart(fig, use_container_width=True)
 
