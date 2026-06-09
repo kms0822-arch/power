@@ -441,18 +441,18 @@ with left:
     ]:
         fig.add_hline(y=y, line_dash="dot", line_color=col, line_width=1.2,
                       annotation_text=f"  {label} ({y:,} MW)",
-                      annotation_font_size=10, annotation_font_color=col)
+                      annotation_font=dict(size=10, color=col))
 
     fig.update_layout(
         height=300,
         margin=dict(l=0, r=10, t=10, b=0),
         xaxis=dict(tickangle=-45, tickfont=dict(size=10), showgrid=False),
-        yaxis=dict(title="예비력 (MW)", titlefont=dict(size=11), tickfont=dict(size=10)),
+        yaxis=dict(title="예비력 (MW)", title_font_size=11, tickfont=dict(size=10)),
         yaxis2=dict(title="수요/공급 (MW)", overlaying="y", side="right",
-                    titlefont=dict(size=11), tickfont=dict(size=10)),
+                    title_font_size=11, tickfont=dict(size=10)),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        hoverlabel=dict(font=dict(size=12)),
+        
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -473,9 +473,9 @@ with left:
         height=150,
         margin=dict(l=0, r=10, t=5, b=0),
         xaxis=dict(tickangle=-45, tickfont=dict(size=10), showgrid=False),
-        yaxis=dict(title="기온 (°C)", titlefont=dict(size=10), tickfont=dict(size=10)),
+        yaxis=dict(title="기온 (°C)", title_font_size=10, tickfont=dict(size=10)),
         yaxis2=dict(title="습도 (%)", overlaying="y", side="right",
-                    titlefont=dict(size=10), tickfont=dict(size=10)),
+                    title_font_size=10, tickfont=dict(size=10)),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
@@ -549,7 +549,7 @@ with left:
         height=280,
         margin=dict(l=0, r=10, t=10, b=0),
         xaxis=dict(tickfont=dict(size=9), tickangle=-30),
-        yaxis=dict(title="발전량 (MW)", titlefont=dict(size=11), tickfont=dict(size=10)),
+        yaxis=dict(title="발전량 (MW)", title_font_size=11, tickfont=dict(size=10)),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
@@ -660,7 +660,7 @@ with right:
         x=profile.iloc[p_hour]["hour_str"],
         line_dash="dash", line_color="#374151", line_width=1.5,
         annotation_text=f"  {p_hour:02d}시",
-        annotation_font_size=11,
+        annotation_font=dict(size=11),
     )
 
     for y, label, col in [
@@ -670,15 +670,15 @@ with right:
     ]:
         fig_p.add_hline(y=y, line_dash="dot", line_color=col, line_width=1,
                         annotation_text=f"  {label}",
-                        annotation_font_size=9, annotation_font_color=col)
+                        annotation_font=dict(size=9, color=col))
 
     fig_p.update_layout(
         height=260,
         margin=dict(l=0, r=10, t=5, b=0),
         xaxis=dict(tickfont=dict(size=9), tickangle=-45),
-        yaxis=dict(title="예비력 (MW)", titlefont=dict(size=10), tickfont=dict(size=10)),
+        yaxis=dict(title="예비력 (MW)", title_font_size=10, tickfont=dict(size=10)),
         yaxis2=dict(title="수요 (MW)", overlaying="y", side="right",
-                    titlefont=dict(size=10), tickfont=dict(size=10)),
+                    title_font_size=10, tickfont=dict(size=10)),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=10)),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
