@@ -433,15 +433,25 @@ with left:
         ),
     ))
 
-    # 기준선
+    # 기준선 (add_hline 대신 add_shape — 최신 Plotly 호환)
     for y, label, col in [
         (4_000, "심각 기준", "#DC2626"),
         (5_500, "경계 기준", "#EA580C"),
         (7_000, "주의 기준", "#D97706"),
     ]:
-        fig.add_hline(y=y, line_dash="dot", line_color=col, line_width=1.2,
-                      annotation_text=f"  {label} ({y:,} MW)",
-                      annotation_font=dict(size=10, color=col))
+        fig.add_shape(
+            type="line",
+            x0=0, x1=1, xref="paper",
+            y0=y, y1=y,
+            line=dict(dash="dot", color=col, width=1.2),
+        )
+        fig.add_annotation(
+            x=1, xref="paper", y=y,
+            text=f"{label} ({y:,} MW)  ",
+            showarrow=False,
+            font=dict(size=10, color=col),
+            xanchor="right",
+        )
 
     fig.update_layout(
         height=300,
@@ -655,12 +665,21 @@ with right:
         ),
     ))
 
-    # 선택 시간 마커
-    fig_p.add_vline(
+    # 선택 시간 마커 (add_vline 대신 add_shape — 문자열 x축 호환)
+    fig_p.add_shape(
+        type="line",
+        x0=profile.iloc[p_hour]["hour_str"],
+        x1=profile.iloc[p_hour]["hour_str"],
+        y0=0, y1=1, yref="paper",
+        line=dict(dash="dash", color="#374151", width=1.5),
+    )
+    fig_p.add_annotation(
         x=profile.iloc[p_hour]["hour_str"],
-        line_dash="dash", line_color="#374151", line_width=1.5,
-        annotation_text=f"  {p_hour:02d}시",
-        annotation_font=dict(size=11),
+        y=1, yref="paper",
+        text=f"  {p_hour:02d}시",
+        showarrow=False,
+        font=dict(size=11, color="#374151"),
+        xanchor="left",
     )
 
     for y, label, col in [
@@ -668,9 +687,19 @@ with right:
         (5_500, "경계", "#EA580C"),
         (7_000, "주의", "#D97706"),
     ]:
-        fig_p.add_hline(y=y, line_dash="dot", line_color=col, line_width=1,
-                        annotation_text=f"  {label}",
-                        annotation_font=dict(size=9, color=col))
+        fig_p.add_shape(
+            type="line",
+            x0=0, x1=1, xref="paper",
+            y0=y, y1=y,
+            line=dict(dash="dot", color=col, width=1),
+        )
+        fig_p.add_annotation(
+            x=0, xref="paper", y=y,
+            text=f"  {label}",
+            showarrow=False,
+            font=dict(size=9, color=col),
+            xanchor="left",
+        )
 
     fig_p.update_layout(
         height=260,
