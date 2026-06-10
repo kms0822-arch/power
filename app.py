@@ -232,6 +232,67 @@ def generate_historical():
     return pd.DataFrame(rows)
 
 
+@st.cache_data
+def generate_yearly():
+    """최근 1년(365일) 일별 전력·날씨 데이터 생성 — 선형회귀용"""
+    rng   = np.random.default_rng(20250609)
+    today = datetime.now().date()
+    rows  = []
+
+    SEASON_COLOR = {
+        "봄(3-5월)":   "#34D399",
+        "여름(6-8월)":  "#F87171",
+        "가을(9-11월)": "#FBBF24",
+        "겨울(12-2월)": "#60A5FA",
+    }
+
+    def season(month):
+        if month in (3, 4, 5):   return "봄(3-5월)"
+        if month in (6, 7, 8):   return "여름(6-8월)"
+        if month in (9, 10, 11): return "가을(9-11월)"
+        return "겨울(12-2월)"
+
+    for i in range(364, -1, -1):
+        date  = today - timedelta(days=i)
+        dow   = date.weekday()
+        is_we = dow >= 5
+        month = date.month
+
+        base_t = {1:-2, 2:1, 3:8, 4:15, 5:20, 6:25,
+                  7:28, 8:27, 9:22, 10:15, 11:8, 12:1}.get(month, 10)
+        temp = round(base_t + float(rng.normal(0, 3.5)), 1)
+
+        base_h = {1:55, 2:50, 3:55, 4:58, 5:62, 6:72,
+                  7:80, 8:78, 9:70, 10:62, 11:62, 12:58}.get(month, 60)
+        hum  = round(float(np.clip(rng.normal(base_h, 10), 30, 98)), 1)
+
+        t_eff  = max(0, temp - 22) * 850 + max(0, 16 - temp) * 600
+        h_eff  = max(0, hum  - 60) * 90
+        w_eff  = -4500 if is_we else 0
+        demand = int(65000 + t_eff + h_eff + w_eff + rng.normal(0, 1200))
+        supply = int(108000 + rng.uniform(0, 8000))
+        reserve = supply - demand
+        rate    = round(reserve / supply * 100, 1)
+
+        label, color, bg, _ = get_alert(rate)
+        rows.append({
+            "date":         date,
+            "month":        month,
+            "season":       season(month),
+            "season_color": SEASON_COLOR[season(month)],
+            "temp":         temp,
+            "humidity":     hum,
+            "max_demand":   demand,
+            "supply":       supply,
+            "reserve":      reserve,
+            "reserve_rate": rate,
+            "alert_label":  label,
+            "alert_color":  color,
+        })
+
+    return pd.DataFrame(rows)
+
+
 def make_hourly(date_str: str, hist_df: pd.DataFrame) -> pd.DataFrame:
     """선택 날짜의 24시간 발전원별 발전량 데이터 생성"""
     row  = hist_df[hist_df["date_str"] == date_str].iloc[0]
@@ -775,6 +836,138 @@ with right:
         | 🔶 경계 | 5 – 7%   | 비상 절전 준비 |
         | 🚨 심각 | 5% 미만  | 비상 절전 시행 |
         """)
+
+
+# ═════════════════════════════════════════════
+# 날씨-예비력 선형회귀 산점도 (1년치)
+# ═════════════════════════════════════════════
+st.divider()
+st.markdown("## 📈 날씨와 전력 예비력의 관계 (최근 1년)")
+st.caption("서울 일평균 기온·습도와 전국 최대 전력 예비력의 상관관계 · 계절별 색상 구분")
+
+yearly_df = generate_yearly()
+
+# 컨트롤
+sc1, sc2, sc3 = st.columns([2, 2, 1])
+with sc1:
+    x_axis = st.radio(
+        "X축 변수", ["기온 (°C)", "습도 (%)"], horizontal=True, key="scatter_x"
+    )
+with sc2:
+    y_axis = st.radio(
+        "Y축 변수", ["예비력 (MW)", "예비율 (%)"], horizontal=True, key="scatter_y"
+    )
+with sc3:
+    show_weekend = st.checkbox("휴일 포함", value=True, key="scatter_we")
+
+# 데이터 필터
+plot_df = yearly_df.copy() if show_weekend else yearly_df[~yearly_df["date"].apply(lambda d: d.weekday() >= 5)]
+
+x_col  = "temp"    if "기온" in x_axis else "humidity"
+y_col  = "reserve" if "예비력" in y_axis else "reserve_rate"
+x_label = x_axis
+y_label = y_axis
+
+# ── 선형회귀 계산 ──────────────────────────────────────────────────────────
+x_vals = plot_df[x_col].values
+y_vals = plot_df[y_col].values
+coef   = np.polyfit(x_vals, y_vals, 1)          # [기울기, 절편]
+poly   = np.poly1d(coef)
+x_line = np.linspace(x_vals.min(), x_vals.max(), 200)
+y_line = poly(x_line)
+
+# R² 계산
+y_hat  = poly(x_vals)
+ss_res = np.sum((y_vals - y_hat) ** 2)
+ss_tot = np.sum((y_vals - y_vals.mean()) ** 2)
+r2     = 1 - ss_res / ss_tot if ss_tot > 0 else 0
+
+direction = "양(+)" if coef[0] > 0 else "음(-)"
+
+# ── 산점도 ────────────────────────────────────────────────────────────────
+SEASON_ORDER = ["봄(3-5월)", "여름(6-8월)", "가을(9-11월)", "겨울(12-2월)"]
+SEASON_COLORS = {
+    "봄(3-5월)":   "#34D399",
+    "여름(6-8월)":  "#F87171",
+    "가을(9-11월)": "#FBBF24",
+    "겨울(12-2월)": "#60A5FA",
+}
+
+fig_sc = go.Figure()
+
+# 계절별 산점도 레이어
+for season in SEASON_ORDER:
+    sub = plot_df[plot_df["season"] == season]
+    fig_sc.add_trace(go.Scatter(
+        x=sub[x_col],
+        y=sub[y_col],
+        mode="markers",
+        name=season,
+        marker=dict(
+            color=SEASON_COLORS[season],
+            size=7,
+            opacity=0.7,
+            line=dict(width=0.5, color="white"),
+        ),
+        hovertemplate=(
+            f"날짜: %{{customdata}}<br>"
+            f"{x_label}: %{{x}}<br>"
+            f"{y_label}: %{{y:,.0f}}<br>"
+            "경보: %{text}<extra></extra>"
+        ),
+        customdata=sub["date"].astype(str),
+        text=sub["alert_label"],
+    ))
+
+# 회귀선
+fig_sc.add_trace(go.Scatter(
+    x=x_line,
+    y=y_line,
+    mode="lines",
+    name=f"회귀선 (R²={r2:.3f})",
+    line=dict(color="#7C3AED", width=2.5, dash="solid"),
+    hoverinfo="skip",
+))
+
+# 예비율 기준선 (y축이 예비율일 때)
+if "예비율" in y_axis:
+    for thresh, label, col in [(15,"안전","#059669"),(10,"관심","#2563EB"),(7,"주의","#D97706"),(5,"경계","#EA580C")]:
+        fig_sc.add_shape(
+            type="line", x0=0, x1=1, xref="paper", y0=thresh, y1=thresh,
+            line=dict(dash="dot", color=col, width=1),
+        )
+        fig_sc.add_annotation(
+            x=1, xref="paper", y=thresh,
+            text=f"  {label} ({thresh}%)", showarrow=False,
+            font=dict(size=9, color=col), xanchor="left",
+        )
+
+fig_sc.update_layout(
+    height=420,
+    margin=dict(l=0, r=0, t=10, b=0),
+    xaxis=dict(title=x_label, tickfont=dict(size=11), showgrid=True,
+               gridcolor="rgba(0,0,0,0.06)"),
+    yaxis=dict(title=y_label, tickfont=dict(size=11), showgrid=True,
+               gridcolor="rgba(0,0,0,0.06)"),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=11)),
+    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    hoverlabel=dict(bgcolor="white"),
+)
+
+st.plotly_chart(fig_sc, use_container_width=True)
+
+# ── 회귀 결과 요약 ────────────────────────────────────────────────────────
+rs1, rs2, rs3, rs4 = st.columns(4)
+rs1.metric("R² (결정계수)", f"{r2:.4f}", help="1에 가까울수록 강한 선형 관계")
+rs2.metric("기울기", f"{coef[0]:+.1f}", help=f"{x_label} 1단위 증가 시 {y_label} 변화량")
+rs3.metric("절편", f"{coef[1]:,.0f}")
+rs4.metric("상관 방향", direction)
+
+st.caption(
+    f"**해석:** {x_label}이 1단위 증가할 때 {y_label}은 평균 **{coef[0]:+.1f}** 만큼 변합니다. "
+    f"R²={r2:.3f}으로 전체 변동의 **{r2*100:.1f}%**를 {x_label}으로 설명할 수 있습니다. "
+    f"(n={len(plot_df)}일)"
+)
 
 
 # ─────────────────────────────────────────────
