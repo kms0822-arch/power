@@ -234,7 +234,7 @@ def generate_historical():
 
 @st.cache_data
 def generate_yearly():
-    """최근 1년(365일) 일별 전력·날씨 데이터 생성 — 선형회귀용"""
+    """최근 5년(1825일) 일별 전력·날씨 데이터 생성 — 선형회귀용"""
     rng   = np.random.default_rng(20250609)
     today = datetime.now().date()
     rows  = []
@@ -252,7 +252,7 @@ def generate_yearly():
         if month in (9, 10, 11): return "가을(9-11월)"
         return "겨울(12-2월)"
 
-    for i in range(364, -1, -1):
+    for i in range(1824, -1, -1):
         date  = today - timedelta(days=i)
         dow   = date.weekday()
         is_we = dow >= 5
@@ -842,13 +842,14 @@ with right:
 # 날씨-예비력 선형회귀 산점도 (1년치)
 # ═════════════════════════════════════════════
 st.divider()
-st.markdown("## 📈 날씨와 전력 예비력의 관계 (최근 1년)")
-st.caption("서울 일평균 기온·습도와 전국 최대 전력 예비력의 상관관계 · 계절별 색상 구분")
+st.markdown("## 📈 날씨와 전력 예비력의 관계 (최근 5년)")
+st.caption("서울 일평균 기온·습도와 전국 최대 전력 예비력의 상관관계 · 계절 또는 연도별 색상 구분")
 
 yearly_df = generate_yearly()
+yearly_df["year"] = yearly_df["date"].apply(lambda d: str(d.year) + "년")
 
 # 컨트롤
-sc1, sc2, sc3 = st.columns([2, 2, 1])
+sc1, sc2, sc3, sc4 = st.columns([2, 2, 2, 1])
 with sc1:
     x_axis = st.radio(
         "X축 변수", ["기온 (°C)", "습도 (%)"], horizontal=True, key="scatter_x"
@@ -858,6 +859,10 @@ with sc2:
         "Y축 변수", ["예비력 (MW)", "예비율 (%)"], horizontal=True, key="scatter_y"
     )
 with sc3:
+    color_by = st.radio(
+        "색상 구분", ["계절", "연도"], horizontal=True, key="scatter_color"
+    )
+with sc4:
     show_weekend = st.checkbox("휴일 포함", value=True, key="scatter_we")
 
 # 데이터 필터
@@ -884,8 +889,8 @@ r2     = 1 - ss_res / ss_tot if ss_tot > 0 else 0
 
 direction = "양(+)" if coef[0] > 0 else "음(-)"
 
-# ── 산점도 ────────────────────────────────────────────────────────────────
-SEASON_ORDER = ["봄(3-5월)", "여름(6-8월)", "가을(9-11월)", "겨울(12-2월)"]
+# ── 색상 그룹 정의 ──────────────────────────────────────────────────────────
+SEASON_ORDER  = ["봄(3-5월)", "여름(6-8월)", "가을(9-11월)", "겨울(12-2월)"]
 SEASON_COLORS = {
     "봄(3-5월)":   "#34D399",
     "여름(6-8월)":  "#F87171",
@@ -893,21 +898,36 @@ SEASON_COLORS = {
     "겨울(12-2월)": "#60A5FA",
 }
 
+years_sorted  = sorted(plot_df["year"].unique())
+YEAR_PALETTE  = ["#6366F1", "#F59E0B", "#10B981", "#EF4444", "#3B82F6"]
+YEAR_COLORS   = {y: YEAR_PALETTE[i % len(YEAR_PALETTE)] for i, y in enumerate(years_sorted)}
+
+if color_by == "계절":
+    groups  = SEASON_ORDER
+    col_key = "season"
+    col_map = SEASON_COLORS
+else:
+    groups  = years_sorted
+    col_key = "year"
+    col_map = YEAR_COLORS
+
+# ── 산점도 ────────────────────────────────────────────────────────────────
 fig_sc = go.Figure()
 
-# 계절별 산점도 레이어
-for season in SEASON_ORDER:
-    sub = plot_df[plot_df["season"] == season]
+for grp in groups:
+    sub = plot_df[plot_df[col_key] == grp]
+    if sub.empty:
+        continue
     fig_sc.add_trace(go.Scatter(
         x=sub[x_col],
         y=sub[y_col],
         mode="markers",
-        name=season,
+        name=grp,
         marker=dict(
-            color=SEASON_COLORS[season],
-            size=7,
-            opacity=0.7,
-            line=dict(width=0.5, color="white"),
+            color=col_map[grp],
+            size=5,
+            opacity=0.65,
+            line=dict(width=0.4, color="white"),
         ),
         hovertemplate=(
             f"날짜: %{{customdata}}<br>"
@@ -966,7 +986,7 @@ rs4.metric("상관 방향", direction)
 st.caption(
     f"**해석:** {x_label}이 1단위 증가할 때 {y_label}은 평균 **{coef[0]:+.1f}** 만큼 변합니다. "
     f"R²={r2:.3f}으로 전체 변동의 **{r2*100:.1f}%**를 {x_label}으로 설명할 수 있습니다. "
-    f"(n={len(plot_df)}일)"
+    f"(n={len(plot_df)}일 · 5년치 데이터)"
 )
 
 
