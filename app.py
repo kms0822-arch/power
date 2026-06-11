@@ -670,17 +670,28 @@ with right:
     sel_hr     = profile.iloc[p_hour]
     p_label, p_color, p_bg, p_border = get_alert(sel_hr["reserve_rate"])
 
-    # 예측 결과 박스
+    # 예측 결과: KPI 카드 형태
+    pk1, pk2, pk3 = st.columns(3)
+    pk1.metric("📊 예상 수요",  f"{sel_hr['demand']:,} MW",
+               delta=f"공급의 {sel_hr['demand']/110000*100:.1f}%",
+               delta_color="inverse")
+    pk2.metric("🔋 예상 예비력", f"{sel_hr['reserve']:,} MW")
+    pk3.metric("📈 예상 예비율", f"{sel_hr['reserve_rate']:.1f} %",
+               delta=f"{sel_hr['reserve_rate']-15:.1f}%p (안전기준 대비)",
+               delta_color="normal")
+
+    # 경보 등급 배너
+    peak_demand = profile["demand"].max()
+    peak_hour   = profile.loc[profile["demand"].idxmax(), "hour_str"]
     st.markdown(
         f"""<div class="pred-box"
             style="background:{p_bg}; border-left:5px solid {p_color};">
-            <div style="font-size:20px;font-weight:700;color:{p_color};margin-bottom:8px;">
-                {ALERT_ICON.get(p_label,'')} {p_hour:02d}시 예측 경보: {p_label}
+            <div style="font-size:18px;font-weight:700;color:{p_color};margin-bottom:6px;">
+                {ALERT_ICON.get(p_label,'')} {p_hour:02d}시 예측 경보: <b>{p_label}</b>
             </div>
-            <div style="font-size:14px;color:#374151;line-height:1.9;">
-                예상 수요 &nbsp;&nbsp;: <b>{sel_hr['demand']:,} MW</b><br>
-                예상 예비력 : <b>{sel_hr['reserve']:,} MW</b><br>
-                예상 예비율 : <b>{sel_hr['reserve_rate']:.1f}%</b>
+            <div style="font-size:13px;color:#374151;line-height:1.8;">
+                하루 중 최대 수요 : <b>{peak_demand:,} MW</b> ({peak_hour})<br>
+                현재 대비 증감 &nbsp;&nbsp;: <b>{sel_hr['demand'] - current['demand']:+,} MW</b>
             </div>
         </div>""",
         unsafe_allow_html=True,
@@ -817,10 +828,10 @@ with right:
     similar = hist_df[
         hist_df["temp"].between(p_temp - 3, p_temp + 3) &
         hist_df["humidity"].between(p_hum - 15, p_hum + 15)
-    ][["date_str", "temp", "humidity", "reserve", "reserve_rate", "alert_label"]].copy()
+    ][["date_str", "temp", "humidity", "max_demand", "reserve", "reserve_rate", "alert_label"]].copy()
 
     if not similar.empty:
-        similar.columns = ["날짜", "기온", "습도", "예비력(MW)", "예비율(%)", "경보"]
+        similar.columns = ["날짜", "기온", "습도", "최대수요(MW)", "예비력(MW)", "예비율(%)", "경보"]
         st.dataframe(similar.head(6), use_container_width=True, hide_index=True)
     else:
         st.caption("유사한 날씨 조건의 과거 데이터가 없습니다.")
@@ -856,7 +867,8 @@ with sc1:
     )
 with sc2:
     y_axis = st.radio(
-        "Y축 변수", ["예비력 (MW)", "예비율 (%)"], horizontal=True, key="scatter_y"
+        "Y축 변수", ["예비력 (MW)", "예비율 (%)", "전력 수요 (MW)"],
+        horizontal=True, key="scatter_y"
     )
 with sc3:
     color_by = st.radio(
@@ -869,7 +881,12 @@ with sc4:
 plot_df = yearly_df.copy() if show_weekend else yearly_df[~yearly_df["date"].apply(lambda d: d.weekday() >= 5)]
 
 x_col  = "temp"    if "기온" in x_axis else "humidity"
-y_col  = "reserve" if "예비력" in y_axis else "reserve_rate"
+if "예비력" in y_axis:
+    y_col = "reserve"
+elif "예비율" in y_axis:
+    y_col = "reserve_rate"
+else:
+    y_col = "max_demand"
 x_label = x_axis
 y_label = y_axis
 
@@ -949,7 +966,7 @@ fig_sc.add_trace(go.Scatter(
     hoverinfo="skip",
 ))
 
-# 예비율 기준선 (y축이 예비율일 때)
+# 기준선: 예비율일 때 경보 구간, 예비력/수요일 때 참고선
 if "예비율" in y_axis:
     for thresh, label, col in [(15,"안전","#059669"),(10,"관심","#2563EB"),(7,"주의","#D97706"),(5,"경계","#EA580C")]:
         fig_sc.add_shape(
@@ -961,6 +978,29 @@ if "예비율" in y_axis:
             text=f"  {label} ({thresh}%)", showarrow=False,
             font=dict(size=9, color=col), xanchor="left",
         )
+elif "예비력" in y_axis:
+    for thresh, label, col in [(4000,"심각 기준","#DC2626"),(7000,"주의 기준","#D97706")]:
+        fig_sc.add_shape(
+            type="line", x0=0, x1=1, xref="paper", y0=thresh, y1=thresh,
+            line=dict(dash="dot", color=col, width=1),
+        )
+        fig_sc.add_annotation(
+            x=1, xref="paper", y=thresh,
+            text=f"  {label}", showarrow=False,
+            font=dict(size=9, color=col), xanchor="left",
+        )
+elif "수요" in y_axis:
+    # 평균 수요 참고선
+    avg_demand = int(plot_df["max_demand"].mean())
+    fig_sc.add_shape(
+        type="line", x0=0, x1=1, xref="paper", y0=avg_demand, y1=avg_demand,
+        line=dict(dash="dot", color="#6B7280", width=1),
+    )
+    fig_sc.add_annotation(
+        x=1, xref="paper", y=avg_demand,
+        text=f"  평균 {avg_demand:,} MW", showarrow=False,
+        font=dict(size=9, color="#6B7280"), xanchor="left",
+    )
 
 fig_sc.update_layout(
     height=420,
